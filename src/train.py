@@ -68,6 +68,7 @@ def validate(matrices, factors=200, iterations=20, regularization=0.01, show_pro
 
 
 def train(coo_train, factors=200, iterations=15, regularization=0.01, show_progress=True):
+    print('Training...')
     model = implicit.als.AlternatingLeastSquares(factors=factors, 
                                                  iterations=iterations, 
                                                  regularization=regularization, 
@@ -94,7 +95,7 @@ def submit(model, csr_train, ALL_USERS, user_ids, item_ids, submission_name="sub
     df_preds = pd.DataFrame(preds, columns=['customer_id', 'prediction'])
     df_preds.to_csv(submission_name, index=False)
     
-    display(df_preds.head())
+    # display(df_preds.head())
     print(df_preds.shape)
     
     return df_preds
@@ -142,7 +143,7 @@ def train_als(df, dfu, dfi):
     matrices = get_val_matrices(df, ALL_USERS, ALL_ITEMS)
 
     best_map12 = 0
-    print('Fiding best parameters...')
+    print('Finding best parameters...')
     for factors in tqdm([40, 50, 60, 100, 200, 500, 1000]):
         for iterations in [3, 12, 14, 15, 20]:
             for regularization in [0.01]:
@@ -157,9 +158,10 @@ def train_als(df, dfu, dfi):
     del matrices
 
     # # Training over the full dataset
-    coo_train = to_user_item_coo(df)
+    coo_train = to_user_item_coo(df, ALL_USERS, ALL_ITEMS)
     csr_train = coo_train.tocsr()
 
+    print(f'"Best MAP@12 {best_map12:6.5f}')
     print(f'best_params: {best_params}')
     model = train(coo_train, **best_params)
 

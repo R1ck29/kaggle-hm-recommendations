@@ -1,1 +1,2 @@
-# kaggle-hm-recommendations
+# H&M Personalized Fashion Recommendations
+
