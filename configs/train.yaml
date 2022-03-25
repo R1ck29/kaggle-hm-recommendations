@@ -1,0 +1,27 @@
+# @package _global_
+# defaults:
+#  - data: recommnedataion
+#  - augmentation: recommnedataion
+#  - model: recommnedataion/als
+#  - loss: wrmsse
+#  - train: train
+#  - pytorch_lightning: trainer/lightning_trainer
+#  - optimizer: adamw
+#  - scheduler: cosinewarm
+#  - callback: pytorch_lightning
+#  - private: custom
+#  - system: system
+
+defaults:
+ - defaults: config1
+
+framework: pytorch
+task: recommnedataion
+model_id: model_id
+
+hydra:
+  run:
+    dir: ./models/${model_id}/${now:%Y%m%d_%H_%M_%S}
+  sweep:
+    dir: ./models/
+    subdir: ${model_id}/${now:%Y%m%d_%H_%M_%S}

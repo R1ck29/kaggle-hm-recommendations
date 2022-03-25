@@ -1,12 +1,27 @@
-import os; os.environ['OPENBLAS_NUM_THREADS']='1'
+import logging
+import os
+
+import hydra
+import implicit
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-import implicit
-from scipy.sparse import coo_matrix
 from implicit.evaluation import mean_average_precision_at_k
+from scipy.sparse import coo_matrix
+from tqdm import tqdm
 
-# # Validation
+from src.utils import *
+
+# A logger for this file
+log = logging.getLogger(__name__)
+
+
+def setup(cfg):
+    if cfg.system.seed == -1:
+        cfg.system.seed = np.random.randint(0,1000000)
+    log.info(f"Seed {cfg.system.seed}")
+    set_seed(cfg.system.seed)
+
+
 def to_user_item_coo(df, ALL_USERS, ALL_ITEMS):
     """ Turn a dataframe with transactions into a COO sparse items x users matrix"""
     row = df['user_id'].values
@@ -63,12 +78,12 @@ def validate(matrices, factors=200, iterations=20, regularization=0.01, show_pro
     # The MAPK by implicit doesn't allow to calculate allowing repeated items, which is the case.
     # TODO: change MAP@12 to a library that allows repeated items in prediction
     map12 = mean_average_precision_at_k(model, csr_train, csr_val, K=12, show_progress=show_progress, num_threads=4)
-    print(f"Factors: {factors:>3} - Iterations: {iterations:>2} - Regularization: {regularization:4.3f} ==> MAP@12: {map12:6.5f}")
+    log.info(f"Factors: {factors:>3} - Iterations: {iterations:>2} - Regularization: {regularization:4.3f} ==> MAP@12: {map12:6.5f}")
     return map12
 
 
 def train(coo_train, factors=200, iterations=15, regularization=0.01, show_progress=True):
-    print('Training...')
+    log.info('Training...')
     model = implicit.als.AlternatingLeastSquares(factors=factors, 
                                                  iterations=iterations, 
                                                  regularization=regularization, 
@@ -94,9 +109,8 @@ def submit(model, csr_train, ALL_USERS, user_ids, item_ids, submission_name="sub
 
     df_preds = pd.DataFrame(preds, columns=['customer_id', 'prediction'])
     df_preds.to_csv(submission_name, index=False)
-    
     # display(df_preds.head())
-    print(df_preds.shape)
+    log.info(f'Submit file shape: {df_preds.shape}')
     
     return df_preds
 
@@ -107,7 +121,7 @@ def target_data(df, start_date, end_date):
     df = df[(df['t_dat'] >= start_date) & (df['t_dat'] <= end_date)]
     s_date = str(df["t_dat"].min()).split(' ')[0]
     e_date = str(df['t_dat'].max()).split(' ')[0]
-    print(f'Using date form {s_date} to {e_date}')
+    log.info(f'Using date form {s_date} to {e_date}')
     return df
 
 
@@ -143,7 +157,7 @@ def train_als(df, dfu, dfi):
     matrices = get_val_matrices(df, ALL_USERS, ALL_ITEMS)
 
     best_map12 = 0
-    print('Finding best parameters...')
+    log.info('Finding best parameters...')
     for factors in tqdm([40, 50, 60, 100, 200, 500, 1000]):
         for iterations in [3, 12, 14, 15, 20]:
             for regularization in [0.01]:
@@ -151,7 +165,7 @@ def train_als(df, dfu, dfi):
                 if map12 > best_map12:
                     best_map12 = map12
                     best_params = {'factors': factors, 'iterations': iterations, 'regularization': regularization}
-                    print(f"Best MAP@12 found. {best_map12:6.5f} Updating: {best_params}")
+                    log.info(f"Best MAP@12 found. {best_map12:6.5f} Updating: {best_params}")
 
     # Factors: 100 - Iterations: 12 - Regularization: 0.010 ==> MAP@12: 0.00638
     # Best MAP@12 found. Updating: {'factors': 100, 'iterations': 12, 'regularization': 0.01}
@@ -161,36 +175,31 @@ def train_als(df, dfu, dfi):
     coo_train = to_user_item_coo(df, ALL_USERS, ALL_ITEMS)
     csr_train = coo_train.tocsr()
 
-    print(f'"Best MAP@12 {best_map12:6.5f}')
-    print(f'best_params: {best_params}')
+    log.info(f'"Best MAP@12 {best_map12:6.5f}')
+    log.info(f'Best Params: {best_params}')
     model = train(coo_train, **best_params)
 
-    submission_name = model_dir + "/submission_" + str(best_map12) + ".csv"
+    submission_name = "submission_" + str(best_map12) + ".csv"
     df_preds = submit(model, csr_train, ALL_USERS, user_ids, item_ids, submission_name)
 
 
-if __name__ == '__main__':
-    # # Load dataframes
-    base_path = '../input/h-and-m-personalized-fashion-recommendations/'
-    csv_train = f'{base_path}transactions_train.csv'
-    csv_sub = f'{base_path}sample_submission.csv'
-    csv_users = f'{base_path}customers.csv'
-    csv_items = f'{base_path}articles.csv'
+@hydra.main(config_path="../configs", config_name="train")
+def main(cfg):
 
-    df = pd.read_csv(csv_train, dtype={'article_id': str}, parse_dates=['t_dat'])
-    df_sub = pd.read_csv(csv_sub)
-    dfu = pd.read_csv(csv_users)
-    dfi = pd.read_csv(csv_items, dtype={'article_id': str})
+    setup(cfg)
 
-    exp_name = 'exp1'
-    model_name = 'ALS'
+    df = pd.read_csv(hydra.utils.to_absolute_path(cfg.data.train_csv_path), dtype={'article_id': str}, parse_dates=['t_dat'])
+    df_sub = pd.read_csv(hydra.utils.to_absolute_path(cfg.data.sub_csv_path))
+    dfu = pd.read_csv(hydra.utils.to_absolute_path(cfg.data.user_csv_path))
+    dfi = pd.read_csv(hydra.utils.to_absolute_path(cfg.data.item_csv_path), dtype={'article_id': str})
+
     start_date = '2020-01-21' #'2020-08-21'
     end_date =  str(df['t_dat'].max()).split(' ')[0]
 
-    model_dir = f'../models/{exp_name}'
-    os.makedirs(model_dir, exist_ok=True)
-
     df = target_data(df, start_date, end_date)
 
-    if model_name == 'ALS':
+    if cfg.model.model_name == 'ALS':
         train_als(df, dfu, dfi)
+
+if __name__ == '__main__':
+    main()

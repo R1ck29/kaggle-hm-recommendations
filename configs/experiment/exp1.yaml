@@ -1,0 +1,55 @@
+# @package _global_
+model_id: als_exp1
+
+system:
+    gpus: 0
+    seed: 1138
+    num_workers: 4
+    distributed_backend: ddp
+
+data:
+    data_path: ./input/h-and-m-personalized-fashion-recommendations/
+    train_csv_path: ${data.data_path}transactions_train.csv
+    sub_csv_path: ${data.data_path}sample_submission.csv
+    user_csv_path: ${data.data_path}customers.csv
+    item_csv_path: ${data.data_path}articles.csv
+    model_path: ./models/
+    normalization: imagenet
+    crop_size: 448
+
+log:
+    filter_warnings: True
+    logger: wb
+
+model:
+    model_name: ALS
+    backbone: gluon_seresnext101_32x4d
+    embedding_size: 512
+    pool: gem
+    arcface_s: 45
+    arcface_m: 0.4
+    neck: option-D
+    head: arc_margin
+    crit: bce
+    loss: arcface
+    class_weights: log
+    class_weights_norm : batch
+
+train:
+    optimizer: sgd
+    weight_decay: 1e-4
+    lr: 0.05
+    batch_size: 64
+    max_epochs: 10
+    scheduler: {method: cosine, warmup_epochs: 1}
+    n_classes: 81313
+    data_frac: 1.
+    save_weights_only: True
+    p_trainable: True
+    num_sanity_val_steps: 0
+    channels_last: False
+    gradient_accumulation_steps: 2
+    precision: 16
+    sync_batchnorm: False
+    resume_from_checkpoint: None
+    pretrained_weights: None

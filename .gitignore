@@ -469,3 +469,5 @@ junit/
 *.png
 
 .DS_Store
+
+/models/*
